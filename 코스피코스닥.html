@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="refresh" content="30">
+<title>주가지수</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #000;
+    color: #fff;
+    font-family: 'Arial Black', Arial, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  .board {
+    display: flex;
+    gap: 60px;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    padding: 20px;
+  }
+
+  .index-box {
+    text-align: center;
+    min-width: 280px;
+  }
+
+  .label {
+    font-size: 2rem;
+    color: #aaa;
+    letter-spacing: 4px;
+    margin-bottom: 10px;
+    font-weight: 400;
+  }
+
+  .value {
+    font-size: 4.5rem;
+    font-weight: 900;
+    letter-spacing: 2px;
+    line-height: 1;
+  }
+
+  .change {
+    font-size: 1.8rem;
+    margin-top: 8px;
+    font-weight: 700;
+  }
+
+  .up   { color: #ff3b3b; }
+  .down { color: #4fc3f7; }
+  .flat { color: #aaa; }
+
+  .divider {
+    width: 2px;
+    height: 120px;
+    background: #333;
+  }
+
+  .time {
+    position: fixed;
+    bottom: 12px;
+    right: 20px;
+    font-size: 1rem;
+    color: #444;
+  }
+
+  .loading { color: #555; font-size: 2rem; }
+</style>
+</head>
+<body>
+
+<div class="board">
+  <div class="index-box">
+    <div class="label">KOSPI</div>
+    <div class="value" id="kospi-val"><span class="loading">--</span></div>
+    <div class="change" id="kospi-chg"></div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="index-box">
+    <div class="label">KOSDAQ</div>
+    <div class="value" id="kosdaq-val"><span class="loading">--</span></div>
+    <div class="change" id="kosdaq-chg"></div>
+  </div>
+</div>
+
+<div class="time" id="time"></div>
+
+<script>
+  // 시간 표시
+  function updateTime() {
+    const now = new Date();
+    document.getElementById('time').textContent =
+      now.toLocaleTimeString('ko-KR');
+  }
+  setInterval(updateTime, 1000);
+  updateTime();
+
+  // 주가 데이터 (Yahoo Finance CORS 우회)
+  async function fetchIndex(symbol) {
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`;
+    const res = await fetch(url);
+    const data = await res.json();
+    const result = data.chart.result[0];
+    const meta = result.meta;
+    const price = meta.regularMarketPrice;
+    const prev  = meta.chartPreviousClose;
+    const change = price - prev;
+    const rate   = (change / prev) * 100;
+    return { price, change, rate };
+  }
+
+  function setBox(valId, chgId, data) {
+    const valEl = document.getElementById(valId);
+    const chgEl = document.getElementById(chgId);
+
+    const dir = data.change > 0 ? 'up' : data.change < 0 ? 'down' : 'flat';
+    const sign = data.change > 0 ? '▲' : data.change < 0 ? '▼' : '-';
+
+    valEl.innerHTML = `<span class="${dir}">${data.price.toLocaleString('ko-KR', {minimumFractionDigits:2, maximumFractionDigits:2})}</span>`;
+    chgEl.innerHTML = `<span class="${dir}">${sign} ${Math.abs(data.change).toFixed(2)} (${Math.abs(data.rate).toFixed(2)}%)</span>`;
+  }
+
+  async function refresh() {
+    try {
+      const [kospi, kosdaq] = await Promise.all([
+        fetchIndex('^KS11'),
+        fetchIndex('^KQ11')
+      ]);
+      setBox('kospi-val',  'kospi-chg',  kospi);
+      setBox('kosdaq-val', 'kosdaq-chg', kosdaq);
+    } catch(e) {
+      console.error('데이터 로드 실패:', e);
+    }
+  }
+
+  refresh();
+  setInterval(refresh, 30000); // 30초마다 갱신
+</script>
+</body>
+</html>
