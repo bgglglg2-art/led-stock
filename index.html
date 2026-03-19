@@ -5,7 +5,6 @@
 <title>주가지수</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-
   body {
     background: #000;
     color: #fff;
@@ -16,61 +15,35 @@
     height: 100vh;
     overflow: hidden;
   }
-
   .board {
     display: flex;
-    gap: 60px;
+    gap: 80px;
     align-items: center;
     justify-content: center;
     width: 100%;
     padding: 20px;
   }
-
-  .index-box {
-    text-align: center;
-    min-width: 280px;
-  }
-
+  .index-box { text-align: center; min-width: 300px; }
   .label {
     font-size: 2rem;
     color: #aaa;
     letter-spacing: 4px;
-    margin-bottom: 10px;
+    margin-bottom: 12px;
     font-weight: 400;
   }
-
   .value {
-    font-size: 4.5rem;
+    font-size: 5rem;
     font-weight: 900;
     letter-spacing: 2px;
     line-height: 1;
   }
-
-  .change {
-    font-size: 1.8rem;
-    margin-top: 8px;
-    font-weight: 700;
-  }
-
+  .change { font-size: 1.8rem; margin-top: 10px; font-weight: 700; }
   .up   { color: #ff3b3b; }
   .down { color: #4fc3f7; }
   .flat { color: #aaa; }
-
-  .divider {
-    width: 2px;
-    height: 120px;
-    background: #333;
-  }
-
-  .time {
-    position: fixed;
-    bottom: 12px;
-    right: 20px;
-    font-size: 1rem;
-    color: #444;
-  }
-
-  .loading { color: #555; font-size: 2rem; }
+  .divider { width: 2px; height: 140px; background: #333; }
+  .time { position: fixed; bottom: 12px; right: 20px; font-size: 1rem; color: #444; }
+  .status { position: fixed; bottom: 12px; left: 20px; font-size: 0.9rem; color: #333; }
 </style>
 </head>
 <body>
@@ -78,27 +51,24 @@
 <div class="board">
   <div class="index-box">
     <div class="label">KOSPI</div>
-    <div class="value" id="kospi-val"><span class="loading">--</span></div>
+    <div class="value" id="kospi-val"><span style="color:#333">--</span></div>
     <div class="change" id="kospi-chg"></div>
   </div>
-
   <div class="divider"></div>
-
   <div class="index-box">
     <div class="label">KOSDAQ</div>
-    <div class="value" id="kosdaq-val"><span class="loading">--</span></div>
+    <div class="value" id="kosdaq-val"><span style="color:#333">--</span></div>
     <div class="change" id="kosdaq-chg"></div>
   </div>
 </div>
 
 <div class="time" id="time"></div>
+<div class="status" id="status"></div>
 
 <script>
-  // 시간 표시
   function updateTime() {
     const now = new Date();
-    document.getElementById('time').textContent =
-      now.toLocaleTimeString('ko-KR');
+    document.getElementById('time').textContent = now.toLocaleString('ko-KR');
   }
   setInterval(updateTime, 1000);
   updateTime();
@@ -112,12 +82,28 @@
     chgEl.innerHTML = `<span class="${dir}">${sign} ${Math.abs(change).toFixed(2)} (${Math.abs(rate).toFixed(2)}%)</span>`;
   }
 
-  // CORS 프록시를 통해 Yahoo Finance 호출
+  // 여러 프록시 순서대로 시도
+  const PROXIES = [
+    url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+    url => `https://thingproxy.freeboard.io/fetch/${url}`,
+    url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+  ];
+
+  async function fetchWithProxy(targetUrl) {
+    for (const proxy of PROXIES) {
+      try {
+        const res = await fetch(proxy(targetUrl), { signal: AbortSignal.timeout(5000) });
+        if (!res.ok) continue;
+        const data = await res.json();
+        if (data?.chart?.result) return data;
+      } catch(e) { continue; }
+    }
+    throw new Error('모든 프록시 실패');
+  }
+
   async function fetchIndex(symbol) {
-    const proxy = 'https://corsproxy.io/?';
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1d`;
-    const res = await fetch(proxy + encodeURIComponent(url));
-    const data = await res.json();
+    const data = await fetchWithProxy(url);
     const meta   = data.chart.result[0].meta;
     const price  = meta.regularMarketPrice;
     const prev   = meta.chartPreviousClose;
@@ -127,6 +113,7 @@
   }
 
   async function refresh() {
+    document.getElementById('status').textContent = '업데이트 중...';
     try {
       const [kospi, kosdaq] = await Promise.all([
         fetchIndex('^KS11'),
@@ -134,13 +121,15 @@
       ]);
       setBox('kospi-val',  'kospi-chg',  kospi.price,  kospi.change,  kospi.rate);
       setBox('kosdaq-val', 'kosdaq-chg', kosdaq.price, kosdaq.change, kosdaq.rate);
+      document.getElementById('status').textContent = '';
     } catch(e) {
-      console.error('데이터 로드 실패:', e);
+      document.getElementById('status').textContent = '재시도 중...';
+      console.error(e);
     }
   }
 
   refresh();
-  setInterval(refresh, 30000); // 30초마다 갱신
+  setInterval(refresh, 30000);
 </script>
 </body>
 </html>
